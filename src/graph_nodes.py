@@ -2,7 +2,7 @@ import numpy as np
 from scipy.spatial import KDTree
 import open3d as o3d
 from typing import Optional
-from src import compute_pose
+from ..src import compute_pose
 
 class ObjectNode:
     """

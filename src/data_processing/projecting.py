@@ -2,7 +2,7 @@ import open3d as o3d
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
-from src import parse_json
+from ...src import parse_json
 
 def project_points_bbox(
     points_3d: np.ndarray,

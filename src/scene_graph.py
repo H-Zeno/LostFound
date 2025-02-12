@@ -8,7 +8,7 @@ import open3d as o3d
 import os, pickle
 from typing import Optional
 
-from src import ObjectNode, DrawerNode, LightSwitchNode
+from ..src import ObjectNode, DrawerNode, LightSwitchNode
 import open3d.visualization.gui as gui
 import open3d.visualization.rendering as rendering
 import datetime, time

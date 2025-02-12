@@ -6,7 +6,7 @@ from math import ceil
 from .drawer_detection import predict_yolodrawer
 from .light_switch_detection import predict_light_switches
 import scipy.cluster.hierarchy as hcluster
-from src import parse_json, parse_txt
+from ...src import parse_json, parse_txt
 from .projecting import project_points_bbox, detections_to_bboxes
 from collections import namedtuple
 
