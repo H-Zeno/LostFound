@@ -49,9 +49,9 @@ def filter_detections_ultralytics(detections, filter_squaredness=True, filter_ar
 
 
 def predict_light_switches(image: np.ndarray, image_name: str, vis_block: bool = False):
-    model = YOLO('weights/best.pt')
+    model = YOLO("../weights/train30/weights/best.pt")
     results_predict = model.predict(source=image, imgsz=1280, conf=0.15, iou=0.4, max_det=9, agnostic_nms=True,
-                                    save=False)
+                                    save=False)  # save plotted images 0.3
 
     boxes, conf = filter_detections_ultralytics(detections=results_predict)
 
@@ -79,4 +79,7 @@ def predict_light_switches(image: np.ndarray, image_name: str, vis_block: bool =
     return detections, len(detections)
 
 if __name__ == "__main__":
-    pass
+    image_name = "/home/cvg-robotics/tim_ws/IMG_1008.jpeg"
+    image = cv2.imread(image_name)
+
+    detections = predict_light_switches(image, image_name, vis_block=True)

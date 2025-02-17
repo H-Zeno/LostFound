@@ -14,7 +14,7 @@ import thirdparty.detector._init_paths
 from model.utils.net_utils import vis_detections_filtered_objects_PIL
 from .detection_utils import hand_object_detection, load_faster_rcnn
 
-from src import crop_image
+from .utils import crop_image
 
 
 def data_loader(

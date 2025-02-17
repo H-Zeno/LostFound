@@ -1,43 +1,50 @@
+import matplotlib.pyplot as plt
 import open3d as o3d
 import numpy as np
-import cv2, os, glob, pickle
+import cv2, os, glob, pickle, sys
 from sklearn.cluster import MeanShift, KMeans, DBSCAN
 from math import ceil
-from .drawer_detection import predict_yolodrawer
-from .light_switch_detection import predict_light_switches
 import scipy.cluster.hierarchy as hcluster
-from ..utils import parse_json, parse_txt
-from .projecting import project_points_bbox, detections_to_bboxes
+import json
 from collections import namedtuple
+
+# from scenegraph.projecting import detections_to_bboxes
+# from scenegraph.drawer_detection import predict_yolodrawer
+# from scenegraph. impolight_switch_detectionrt predict_light_switches
+# from scenegraph.projecting import project_points_bbox
+
+from LostFound.src.data_processing.projecting import detections_to_bboxes, project_points_bbox
+from LostFound.src.data_processing.drawer_detection import predict_yolodrawer
+from LostFound.src.data_processing.light_switch_detection import predict_light_switches
+
 
 BBox = namedtuple("BBox", ["xmin", "ymin", "xmax", "ymax"])
 Detection = namedtuple("Detection", ["file", "name", "conf", "bbox"])
 
-def compute_iou(array1: np.ndarray, array2: np.ndarray) -> float:
-    """
-    Computes the Intersection over Union (IoU) between two arrays.
+def parse_json(file_path):
+    with open(file_path, 'r') as file:
+        data = json.load(file)
 
-    :param array1: First array.
-    :param array2: Second array.
-    :return: IoU score as a float, representing the overlap between the two arrays.
-    """
+    intrinsics = np.array(data["intrinsics"]).reshape(3, 3)
+    # projection_matrix = np.array(data["projectionMatrix"]).reshape(4, 4)
+    camera_pose = np.array(data["cameraPoseARFrame"]).reshape(4, 4)
+    return intrinsics, camera_pose
+
+def parse_txt(file_path):
+    with open(file_path, 'r') as file:
+        extrinsics = file.readlines()
+        extrinsics = [parts.split() for parts in extrinsics]
+        extrinsics = np.array(extrinsics).astype(float)
+
+    return extrinsics
+
+def compute_iou(array1, array2):
     intersection = np.intersect1d(array1, array2)
     union = np.union1d(array1, array2)
     iou = len(intersection) / len(union)
     return iou
 
-def dynamic_threshold(detection_counts: list, n_clusters: int = 2) -> float:
-    """
-    Calculates a dynamic threshold for detection count differences using k-means clustering.
-
-    This function computes the differences between consecutive detection counts, clusters the differences 
-    using k-means, and calculates a threshold based on the cluster centers. The threshold is set to the midpoint 
-    between the two closest cluster centers, providing a dynamic way to separate high and low change rates in detection counts.
-
-    :param detection_counts: List of detection counts over a sequence, used to calculate consecutive differences.
-    :param n_clusters: Number of clusters for k-means. Defaults to 2.
-    :return: Calculated threshold as a float, representing the midpoint between cluster centers.
-    """
+def dynamic_threshold(detection_counts, n_clusters=2):
     differences = np.array([abs(j - i) for i, j in zip(detection_counts[:-1], detection_counts[1:])]).reshape(-1, 1)
     kmeans = KMeans(n_clusters=n_clusters)
     kmeans.fit(differences)
@@ -50,27 +57,7 @@ def dynamic_threshold(detection_counts: list, n_clusters: int = 2) -> float:
     
     return threshold
 
-def cluster_detections(
-    detections: list,
-    points_3d: np.ndarray,
-    aligned: bool = False
-) -> tuple[int, str, str, list[np.ndarray]]:
-    """
-    Clusters 3D detection points and organizes results with metadata.
-
-    This function clusters detected points in 3D space based on the input detections and their coordinates.
-    It optionally aligns the detections if the `aligned` flag is set. The function returns metadata about the 
-    clustered detections and a list of bounding boxes in 3D space for each cluster.
-
-    :param detections: List of detection data, containing details for each detected object or region.
-    :param points_3d: Array of 3D points corresponding to the detections, typically of shape (N, 3).
-    :param aligned: Flag indicating if detections should be aligned prior to clustering. Defaults to False.
-    :return: Tuple containing:
-        - data_num: Integer representing the number of clusters or detections processed.
-        - data_name: String indicating the name or identifier for the detection dataset.
-        - data_file: String representing the filename or source of the detection data.
-        - points_bb_3d_list: List of 3D numpy arrays, each representing the bounding box points for a cluster.
-    """
+def cluster_detections(detections, points_3d, aligned=False):
     if not detections:
         return []
     dels = []
@@ -97,8 +84,12 @@ def cluster_detections(
 
     center_coord_3d = []
     center_index = []
+    rays_world = []
+    origins_world = []
     points_bb_3d_list = []
     for idx, det in enumerate(data_num):
+        u = (det[1] + det[3]) / 2
+        v = (det[2] + det[4]) / 2
         bbox = det[1:5]
 
         if aligned:
@@ -106,11 +97,17 @@ def cluster_detections(
             cam_pose = parse_txt(data_file[idx]+ ".txt")
         else:
             intrinsics, cam_pose = parse_json(data_file[idx]+ ".json")
+        # test
+        # closest_point, closest_distance, closest_index, origin_world, ray_world = project_point_center(points_3d.copy(), cam_pose.copy(), intrinsics.copy(), u.copy(), v.copy())
+        # center_coord_3d.append(closest_point)
+        # center_index.append(closest_index)
+        # rays_world.append(ray_world)
+        # origins_world.append(origin_world)
 
         image = cv2.imread(data_file[idx] + ".jpg")
         width, height = image.shape[1], image.shape[0]
 
-        _, points_bb_3d = project_points_bbox(points_3d, cam_pose, intrinsics, width, height, bbox.copy())
+        indices_bb_3d, points_bb_3d = project_points_bbox(points_3d, cam_pose, intrinsics, width, height, bbox.copy())
 
         centroid = np.mean(points_bb_3d, axis=0)
         dist = np.linalg.norm(points_3d - centroid, axis=1)
@@ -121,20 +118,22 @@ def cluster_detections(
         center_index.append(closest_index)
         points_bb_3d_list.append(points_bb_3d)
 
+
+
+        a = 2
+
     center_coord_3d = np.array(center_coord_3d)
     center_index = np.array(center_index)
+
+    # return data_num, data_name, data_file, origins_world, rays_world
+
+
 
     clusters = hcluster.fclusterdata(center_coord_3d, 0.15, criterion="distance")
     data_num = np.column_stack((data_num, center_coord_3d, center_index, clusters))
     return data_num, data_name, data_file, points_bb_3d_list
 
-def cluster_images(detections: list) -> list:
-    """
-    Groups temporally close images based on detection data into clusters.
-
-    :param detections: List of the detection entries and the corresponding number of detections for each image, used for clustering.
-    :return: List of clusters.
-    """
+def cluster_images(detections):
     if not detections:
         return []
     
@@ -157,50 +156,45 @@ def cluster_images(detections: list) -> list:
 
     return clusters
 
-def select_optimal_images(clusters: list) -> list:
-    """
-    Selects the optimal image from each cluster based on a scoring criterion - the imae
-    with the maximum number of detections in the cluster.
-
-    :param clusters: List of clusters, where each cluster contains tuples of images and their scores.
-    :return: List of optimal images, with one image selected per cluster based on the highest score.
-    """
+def select_optimal_images(clusters):
     optimal_images = []
     for cluster in clusters:
         if cluster:
+
             optimal_images.append(max(cluster, key=lambda x: x[1])[0])
     return optimal_images
 
-def register_drawers(dir_path: str) -> list:
-    """
-    Registers drawers from a YOLO detection algorithm in the 3D scene.
-
-    :param dir_path: Path to the directory containing drawer data for registration.
-    :return: List of sorted indices representing registered drawers.
-    """
+def register_drawers(dir_path):
+    # stores tuples containing the detected box(es) and its/their confidence(s)
     detections = []
     if os.path.exists(os.path.join(dir_path, 'detections.pkl')):
         with open(os.path.join(dir_path, 'detections.pkl'), 'rb') as f:
             detections = pickle.load(f)
     else:
         for image_name in sorted(glob.glob(os.path.join(dir_path, 'frame_*.jpg'))):
-            # img_path = os.path.join(dir_path, image_name)
-            image = cv2.imread(image_name)
+            img_path = os.path.join(dir_path, image_name)
+            image = cv2.imread(img_path)
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             detections += [predict_yolodrawer(image, image_name[:-4], vis_block=False)]
         with open(os.path.join(dir_path, 'detections.pkl'), 'wb') as f:
             pickle.dump(detections, f)
         
     clusters = cluster_images(detections)
+
+    # optimal_images = mean_shift_clustering(detections)
     
     optimal_images = select_optimal_images(clusters)
     
     detections = [det for subdets in [detections[opt][0] for opt in optimal_images] for det in subdets]
     
     pcd_original = o3d.io.read_point_cloud(os.path.join(dir_path, 'mesh_labeled.ply'))
-    bboxes_3d = detections_to_bboxes(np.asarray(pcd_original.points), detections, threshold=0.9)
+    bboxes_3d = detections_to_bboxes(np.asarray(pcd_original.points), detections)
+
+    # mesh = o3d.io.read_triangle_mesh(os.path.join(dir_path, 'textured_output.obj'))
+    # bboxes_3d = detections_to_bboxes(np.asarray(mesh.vertices), detections)
 
     all_bbox_indices = [(np.array(bbox.get_point_indices_within_bounding_box(pcd_original.points)), conf) for bbox, conf in bboxes_3d]
+    # all_bbox_indices = [(np.array(bbox.get_point_indices_within_bounding_box(mesh.vertices)), conf) for bbox, conf in bboxes_3d]
 
     registered_indices = []
     for indcs, conf in all_bbox_indices:     
@@ -216,17 +210,7 @@ def register_drawers(dir_path: str) -> list:
     return [indcs for (indcs, _) in sorted(registered_indices, key=lambda x: x[1])]
 
 
-def register_light_switches(dir_path: str, vis_block: bool = False) -> list:
-    """
-    Registers light switches from a YOLO detection algorithm in the 3D scene.
-
-    This function processes data within a specified directory to identify and register light switches detected by YOLO 
-    in a 3D scene. Optionally, visualization can be turned on during the registration process.
-
-    :param dir_path: Path to the directory containing light switch data for registration.
-    :param vis_block: Flag indicating whether to have visualization during processing. Defaults to False.
-    :return: List of sorted indices representing registered light switches.
-    """
+def register_light_switches(dir_path, vis_block=False, transform=False):
     # stores tuples containing the detected box(es) and its/their confidence(s)
     detections = []
     if os.path.exists(os.path.join(dir_path, 'detections_lightswitch.pkl')):
@@ -234,10 +218,10 @@ def register_light_switches(dir_path: str, vis_block: bool = False) -> list:
             detections = pickle.load(f)
     else:
         for image_name in sorted(glob.glob(os.path.join(dir_path, 'frame_*.jpg'))):
-            # img_path = os.path.join(dir_path, image_name)
-            image = cv2.imread(image_name)
+            img_path = os.path.join(dir_path, image_name)
+            image = cv2.imread(img_path)
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            detections += [predict_light_switches(image, image_name[:-4])]
+            detections += [predict_light_switches(image, image_name[:-4], vis_block=False)]
         with open(os.path.join(dir_path, 'detections_lightswitch.pkl'), 'wb') as f:
             pickle.dump(detections, f)
 
@@ -262,7 +246,7 @@ def register_light_switches(dir_path: str, vis_block: bool = False) -> list:
         detections.append(Detection(file=file, name=name, conf=data_num[optimal_detection_idx][0], bbox=bbox))
         test_centroids_idx.append(data_num[optimal_detection_idx][-2])
 
-    bboxes_3d = detections_to_bboxes(np.asarray(pcd_original.points), detections, threshold=0.9)
+    bboxes_3d = detections_to_bboxes(np.asarray(pcd_original.points), detections, threshold=0.7)
 
     all_bbox_indices = [(np.array(bbox.get_point_indices_within_bounding_box(pcd_original.points)), conf) for bbox, conf in bboxes_3d]
 
@@ -284,9 +268,79 @@ def register_light_switches(dir_path: str, vis_block: bool = False) -> list:
         for (ind, conf) in all_bbox_indices:
             all_colors[ind] = np.random.rand(3)
         pcd_original.colors = o3d.utility.Vector3dVector(all_colors)
+
+        # highlight normals
+        # rays = []
+        # length = 0.1
+        # color = [1, 0, 0]
+        # for bbox_3d in enumerate(bboxes_3d):
+        #     points = [bbox_3d[1][0].center, bbox_3d[1][0].center + bbox_3d[1][1] * length]
+        #     lines = [[0, 1]]
+        #     colors = [color for _ in lines]
+        #     line_set = o3d.geometry.LineSet()
+        #     line_set.points = o3d.utility.Vector3dVector(points)
+        #     line_set.lines = o3d.utility.Vector2iVector(lines)
+        #     line_set.colors = o3d.utility.Vector3dVector(colors)
+        #     rays.append(line_set)
+
         o3d.visualization.draw_geometries([pcd_original])
+
+    # test
+    # transform the points and plane normal to the ground frame
+    # T_IG = parse_txt("/home/cvg-robotics/tim_ws/spot-compose-tim/data/prescans/24-08-05a/icp_tform_ground.txt")
+    # pts = np.array([i[0].center for i in bboxes_3d]).T
+    # pts = np.vstack((pts, np.ones(pts.shape[1])))
+    # pts_IG = np.dot(T_IG, pts)
+    # normals = np.array([i[1] for i in bboxes_3d]).T
+    # normals_IG = np.dot(T_IG[:3, :3], normals)
 
     return [indcs for (indcs, _) in sorted(registered_indices, key=lambda x: x[1])]
 
+
+def dbscan_clustering(detections):
+
+    features = [{'image_id': id, 'num_drawers': n} for (id, n) in detections]
+
+    # Convert detection counts to numpy array for clustering
+    num_detections = np.array([dc['num_drawers'] for dc in features]).reshape(-1, 1)
+
+    # Apply DBSCAN clustering
+    dbscan = DBSCAN(eps=1, min_samples=5)  # eps and min_samples can be tuned based on your data
+    labels = dbscan.fit_predict(num_detections)
+
+    # Identify the core cluster with the most images
+    unique_labels, counts = np.unique(labels, return_counts=True)
+    core_cluster = unique_labels[np.argmax(counts[unique_labels != -1])]  # Exclude noise label (-1)
+
+    # Filter images based on the core cluster
+    selected_indices = np.where(labels == core_cluster)[0]
+    refined_detections = [detections[i] for i in selected_indices]
+
+    # print(f"Selected {len(refined_detections)} images from the core cluster with the most detections.")
+
+def mean_shift_clustering(detections):
+    # features are only the number of detections per image
+    features = np.array([np.array([i, n]) for i, (_, n) in enumerate(detections)])
+    counts = np.array([n for (_, n) in detections])
+
+    mean_shift = MeanShift()
+    mean_shift.fit(features)
+    labels = mean_shift.labels_
+
+    image_indices = []
+    for i in range(max(labels), -1, -1):
+        indices = np.where(labels == i)[0]
+        max_val = np.max(counts[indices])
+        max_indexes = indices[np.where(counts[indices] > (max_val - (max_val // 4)))[0]]
+        if max_indexes.size > 1:
+            image_indices.extend(max_indexes.tolist())
+        else:
+            max_index = indices[np.where(counts[indices] == max_val)[0]]
+            image_indices.extend(max_index.tolist())
+            
+    return image_indices
+
 if __name__ == "__main__":
-    pass
+    # _ = register_drawers("/home/cvg-robotics/tim_ws/spot-compose-tim/data/prescans/24-08-01a", vis_block=True)
+    _ = register_light_switches("/home/cvg-robotics/tim_ws/spot-compose-tim/data/prescans/24-08-17a", vis_block=True)
+    # _ = register_light_switches_aligned(dir_path="/home/cvg-robotics/tim_ws/spot-compose-tim/data/", pcd_name= "24-08-01a")

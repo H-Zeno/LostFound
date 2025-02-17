@@ -160,7 +160,25 @@ def pose_aria_pointcloud(
             return T_world_marker
     
     print("No marker found for pose estimation")
+def convert_z_up_to_y_up(pcd_path):
+    """ Converts a given pointcloud from z-up to y-up coordinate system."""
+    rot_z_90 = np.array([[np.cos(np.pi/2), -np.sin(np.pi/2), 0, 0],
+                        [np.sin(np.pi/2), np.cos(np.pi/2), 0, 0],
+                        [0, 0, 1, 0],
+                        [0, 0, 0, 1]])
 
+    rot_x_minus_90 = np.array([[1, 0, 0, 0],
+                            [0, np.cos(-np.pi/2), -np.sin(-np.pi/2), 0],
+                            [0, np.sin(-np.pi/2), np.cos(-np.pi/2), 0],
+                            [0, 0, 0, 1]])
+    
+
+    inverse = np.dot(rot_x_minus_90, rot_z_90)
+
+    pcd = o3d.io.read_point_cloud(pcd_path)
+    pcd.transform(inverse)
+
+    o3d.io.write_point_cloud(pcd_path[:-4] + "_y_up.ply", pcd)
 def pose_ipad_pointcloud(
     scan_dir: str,
     pcd_path: str = None,
@@ -241,7 +259,22 @@ def pose_ipad_pointcloud(
             T_world_marker = np.dot(T_world_camera, T_camera_marker)
 
             if pcd_path is not None:
+                # # Define the inverse tranformation I did to get pcd from y-up to z-up
+                # rot_z_90 = np.array([[np.cos(np.pi/2), -np.sin(np.pi/2), 0, 0],
+                #                     [np.sin(np.pi/2), np.cos(np.pi/2), 0, 0],
+                #                     [0, 0, 1, 0],
+                #                     [0, 0, 0, 1]])
+
+                # rot_x_minus_90 = np.array([[1, 0, 0, 0],
+                #                         [0, np.cos(-np.pi/2), -np.sin(-np.pi/2), 0],
+                #                         [0, np.sin(-np.pi/2), np.cos(-np.pi/2), 0],
+                #                         [0, 0, 0, 1]])
+                
+
+                # inverse = np.dot(rot_x_minus_90, rot_z_90)
+
                 pcd = o3d.io.read_point_cloud(pcd_path)
+                # pcd.transform(inverse)
 
                 mesh_frame_world = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.4, origin=[0, 0, 0])
                 
@@ -270,6 +303,38 @@ def pose_ipad_pointcloud(
         
     print("No marker found for pose estimation")
 
+
+def transform_ipad_to_aria_pointcloud(pointcloud_path, T_world_marker_ipad, T_world_marker_aria):
+    """Transforms the pointcloud from the iPad coordinate system to the Aria coordinate system.
+    Transformed iPad pointcloud is saved to the returned path."""
+    pcd = o3d.io.read_point_cloud(pointcloud_path)
+    T_world_marker_ipad = np.linalg.inv(T_world_marker_ipad)
+    pcd.transform(T_world_marker_ipad)
+    pcd.transform(T_world_marker_aria)
+    o3d.io.write_point_cloud(pointcloud_path[:-4] + "_transformed.ply", pcd)
+    return pointcloud_path[:-4] + "_transformed.ply"
+
+
+def spot_to_aria_coords(points, aria_transform):
+    roty270 = np.array([
+        [np.cos(3*np.pi/2), 0, np.sin(3*np.pi/2), 0],
+        [0, 1, 0, 0],
+        [-np.sin(3*np.pi/2), 0, np.cos(3*np.pi/2), 0],
+        [0, 0, 0, 1]
+    ])
+
+    rotz90 = np.array([
+        [np.cos(np.pi/2), -np.sin(np.pi/2), 0, 0],
+        [np.sin(np.pi/2), np.cos(np.pi/2), 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
+    ])
+
+    points = np.dot(roty270, np.vstack((points.T, np.ones(points.shape[0])))).T[:, :3]
+    points = np.dot(rotz90, np.vstack((points.T, np.ones(points.shape[0])))).T[:, :3]
+    points = np.dot(aria_transform, np.vstack((points.T, np.ones(points.shape[0])))).T[:, :3]
+
+    return points
 def icp_alignment(
     source_folder: str,
     target_folder: str,
