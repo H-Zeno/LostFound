@@ -3,12 +3,15 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import pandas as pd
 from scipy.spatial import KDTree
 import open3d as o3d
 import os, pickle
-from typing import Optional
+from typing import Optional, List
 
 from ..src import ObjectNode, DrawerNode, LightSwitchNode
+from .utils import parse_txt
+from .data_processing.preprocessing import preprocess_scan
 import open3d.visualization.gui as gui
 import open3d.visualization.rendering as rendering
 import datetime, time
@@ -75,7 +78,7 @@ class SceneGraph:
         self.pose = pose
         self.mesh = None
         self.pcd = None
-    
+
     def change_coordinate_system(self, transformation: np.ndarray) -> None:
         """
         Applies a transformation to change the coordinate system of the entire scene graph.
@@ -84,7 +87,7 @@ class SceneGraph:
         scene graph by applying a given transformation matrix. The transformation affects the pose 
         of each node and any central scene representations such as point clouds or meshes.
 
-        :param transformation: A 4x4 transformation matrix to apply to the scene graph’s coordinate system.
+        :param transformation: A 4x4 transformation matrix to apply to the scene graph's coordinate system.
         :return: None. The coordinate system of nodes and spatial data is modified in place.
         """
         if self.pose is not None:
@@ -118,7 +121,7 @@ class SceneGraph:
         :param color: RGB color tuple representing the node's color.
         :param sem_label: Semantic label categorizing the node (e.g., "drawer", "light switch").
         :param points: Array of 3D points defining the node's geometry.
-        :param tracking_points: List of key points used for tracking the node’s position.
+        :param tracking_points: List of key points used for tracking the node's position.
         :param mesh_mask: Binary mask representing the node's mesh structure.
         :param confidence: Confidence score associated with the node's detection or classification.
         """
@@ -749,6 +752,41 @@ class SceneGraph:
         
         # Run the application
         gui.Application.instance.run()
+
+
+def get_scene_graph(SCAN_DIR: str, categories_to_remove: Optional[List[str]] = ["curtain", "door"], transform_to_spot_frame: bool = True) -> SceneGraph:
+    """
+    This function builds a semantic 3D scene graph based on the instance segmentated 3D point clouds by Mask3D
+    
+    Args:
+        SCAN_DIR (str): The directory of the prescan data (prescans, defined in config.yaml).
+        categories_to_remove (Optional[List[str]]): The object categories to remove from the scene graph, default is "curtain" and "door".
+        transform_to_spot_frame (bool): Whether to transform the scene graph to the coordinate system of the Spot robot.
+
+    Returns:
+        SceneGraph: The scene graph object.
+    """
+    # instantiate the label mapping for Mask3D object classes (would change if using different 3D instance segmentation model)
+    label_map = pd.read_csv(SCAN_DIR + '/mask3d_label_mapping.csv', usecols=['id', 'category'])
+    mask3d_label_mapping = pd.Series(label_map['category'].values, index=label_map['id']).to_dict()
+    preprocess_scan(SCAN_DIR, drawer_detection=True, light_switch_detection=True)
+    T_ipad = np.load(SCAN_DIR + "/aruco_pose.npy")
+    immovable=["armchair", "bookshelf", "end table", "shelf", "coffee table", "dresser"]
+    scene_graph = SceneGraph(label_mapping=mask3d_label_mapping, min_confidence=0.2, immovable=immovable, pose=T_ipad)
+    scene_graph.build(SCAN_DIR, drawers=False, light_switches=False)
+
+    # potentially remove a category
+    for category in categories_to_remove:
+        scene_graph.remove_category(category)
+
+    scene_graph.color_with_ibm_palette()
+    
+    if transform_to_spot_frame:
+        # to transform to Spot coordinate system:
+        T_spot = parse_txt(os.path.join(SCAN_DIR, "icp_tform_ground.txt"))
+        scene_graph.change_coordinate_system(T_spot)  # where T_spot is a 4x4 transformation matrix of the aruco marker in Spot coordinate system
+
+    return scene_graph
 
 
 
