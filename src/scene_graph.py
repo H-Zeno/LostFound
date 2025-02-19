@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import KDTree
 import open3d as o3d
+import json
 import os, pickle
 from typing import Optional, List
 
@@ -754,7 +755,7 @@ class SceneGraph:
         gui.Application.instance.run()
 
 
-def get_scene_graph(SCAN_DIR: str, categories_to_remove: Optional[List[str]] = ["curtain", "door"], transform_to_spot_frame: bool = True) -> SceneGraph:
+def get_scene_graph(SCAN_DIR: str, categories_to_remove: Optional[List[str]] = ["curtain", "door"], transform_to_spot_frame: bool = True, drawers: bool = False, light_switches: bool = False) -> SceneGraph:
     """
     This function builds a semantic 3D scene graph based on the instance segmentated 3D point clouds by Mask3D
     
@@ -773,7 +774,7 @@ def get_scene_graph(SCAN_DIR: str, categories_to_remove: Optional[List[str]] = [
     T_ipad = np.load(SCAN_DIR + "/aruco_pose.npy")
     immovable=["armchair", "bookshelf", "end table", "shelf", "coffee table", "dresser"]
     scene_graph = SceneGraph(label_mapping=mask3d_label_mapping, min_confidence=0.2, immovable=immovable, pose=T_ipad)
-    scene_graph.build(SCAN_DIR, drawers=False, light_switches=False)
+    scene_graph.build(SCAN_DIR, drawers=drawers, light_switches=light_switches)
 
     # potentially remove a category
     for category in categories_to_remove:
@@ -787,6 +788,4 @@ def get_scene_graph(SCAN_DIR: str, categories_to_remove: Optional[List[str]] = [
         scene_graph.change_coordinate_system(T_spot)  # where T_spot is a 4x4 transformation matrix of the aruco marker in Spot coordinate system
 
     return scene_graph
-
-
 
