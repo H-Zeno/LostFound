@@ -184,6 +184,41 @@ class SceneGraph:
             print(f"Centroid: {node.centroid}")
             print("Semantic Label: " + self.label_mapping.get(node.sem_label, "ID not found"))
             print(f"Confidence: {node.confidence}")
+
+    def scene_graph_to_dict(self) -> dict:
+        """
+        Serializes the essential components of the SceneGraph into a dictionary format
+        suitable for JSON encoding. Complex objects (like mesh, pcd, KDTree) are omitted
+        to keep the output human-readable.
+        """
+        sg_dict = {
+            "pose": self.pose.tolist() if self.pose is not None else None,
+            "min_confidence": self.min_confidence,
+            "k": self.k,
+            "immovable": self.immovable,
+            "nodes": [],
+            "outgoing": self.outgoing,
+            "ingoing": self.ingoing,
+        }
+        for node in self.nodes.values():
+            node_info = {
+                "object_id": node.object_id,
+                "sem_label": self.label_mapping.get(node.sem_label, f"Unknown({node.sem_label})"),
+                "centroid": node.centroid.tolist() if isinstance(node.centroid, np.ndarray) else node.centroid,
+                "confidence": node.confidence,
+                "movable": node.movable,
+                "visible": node.visible,
+                "color": list(node.color) if isinstance(node.color, (list, np.ndarray)) else node.color,
+            }
+            sg_dict["nodes"].append(node_info)
+        return sg_dict
+
+    def scene_graph_to_json(self) -> str:
+        """
+        Returns a JSON string representation of the SceneGraph for clear human and LLM readability.
+        """
+        
+        return json.dumps(self.scene_graph_to_dict(), indent=4)
     
     def save(self, file_path: str) -> None:
         """
@@ -768,10 +803,10 @@ def get_scene_graph(SCAN_DIR: str, categories_to_remove: Optional[List[str]] = [
         SceneGraph: The scene graph object.
     """
     # instantiate the label mapping for Mask3D object classes (would change if using different 3D instance segmentation model)
-    label_map = pd.read_csv(SCAN_DIR + '/mask3d_label_mapping.csv', usecols=['id', 'category'])
+    label_map = pd.read_csv(os.path.join(SCAN_DIR, 'mask3d_label_mapping.csv'), usecols=['id', 'category'])
     mask3d_label_mapping = pd.Series(label_map['category'].values, index=label_map['id']).to_dict()
     preprocess_scan(SCAN_DIR, drawer_detection=True, light_switch_detection=True)
-    T_ipad = np.load(SCAN_DIR + "/aruco_pose.npy")
+    T_ipad = np.load(os.path.join(SCAN_DIR, "aruco_pose.npy"))
     immovable=["armchair", "bookshelf", "end table", "shelf", "coffee table", "dresser"]
     scene_graph = SceneGraph(label_mapping=mask3d_label_mapping, min_confidence=0.2, immovable=immovable, pose=T_ipad)
     scene_graph.build(SCAN_DIR, drawers=drawers, light_switches=light_switches)

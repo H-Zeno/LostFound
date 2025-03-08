@@ -356,8 +356,8 @@ def traverse_ingoing_nodes(scene_graph_json_path: str, save_dir: str) -> None:
         }
         for child in ingoing_graph.get(node, []):
             print('child of ', node, 'is ', child)
-            if ingoing_graph.get(child, []) == node:
-                tree_node.append(build_tree(child, visited))
+            if ingoing_graph.get(child, []) == [node]:
+                tree_node.extend(build_tree(child, visited)) #TODO: fix so that it gets added as an equal, not as a child
             else:
                 tree_node["child_nodes"].append(build_tree(child, visited))
         return tree_node
