@@ -316,67 +316,68 @@ def scene_graph_to_json(scene_graph) -> str:
     
     return json.dumps(scene_graph_to_dict(scene_graph), indent=4)
 
-def traverse_ingoing_nodes(scene_graph_json_path: str, save_dir: str) -> None:
-    """
-    Traverses the ingoing nodes of a scene graph loaded from a JSON file and saves the hierarchical traversal as a JSON file.
+# Traverse ingoing nodes (experiment by Zeno 09/08/2025)
+# def traverse_ingoing_nodes(scene_graph_json_path: str, save_dir: str) -> None:
+#     """
+#     Traverses the ingoing nodes of a scene graph loaded from a JSON file and saves the hierarchical traversal as a JSON file.
 
-    The function loads the scene graph JSON (which contains an 'ingoing' dictionary and a 'nodes' list), builds a mapping from object_id to node info,
-    and interprets the ingoing dictionary as defining directed edges from a node to its ingoing nodes. It then sorts the starting nodes by the number
-    of ingoing connections (in descending order) and recursively builds a tree hierarchy. A child node is nested under its parent only if the child
-    has the current node as its only ingoing connection. The resulting hierarchical structure is saved as a JSON file named 'ingoing_traversal.json'
-    in the given save_dir.
+#     The function loads the scene graph JSON (which contains an 'ingoing' dictionary and a 'nodes' list), builds a mapping from object_id to node info,
+#     and interprets the ingoing dictionary as defining directed edges from a node to its ingoing nodes. It then sorts the starting nodes by the number
+#     of ingoing connections (in descending order) and recursively builds a tree hierarchy. A child node is nested under its parent only if the child
+#     has the current node as its only ingoing connection. The resulting hierarchical structure is saved as a JSON file named 'ingoing_traversal.json'
+#     in the given save_dir.
 
-    :param scene_graph_json_path: Path to the scene graph JSON file.
-    :param save_dir: Directory where the output JSON file will be saved.
-    """
+#     :param scene_graph_json_path: Path to the scene graph JSON file.
+#     :param save_dir: Directory where the output JSON file will be saved.
+#     """
 
-    # Load the scene graph JSON file
-    with open(scene_graph_json_path, 'r') as f:
-        sg = json.load(f)
+#     # Load the scene graph JSON file
+#     with open(scene_graph_json_path, 'r') as f:
+#         sg = json.load(f)
 
-    ingoing = sg.get('ingoing', {})
-    nodes_list = sg.get('nodes', [])
+#     ingoing = sg.get('ingoing', {})
+#     nodes_list = sg.get('nodes', [])
 
-    # Build a mapping from object_id to node info
-    nodes_dict = {node['object_id']: node for node in nodes_list}
+#     # Build a mapping from object_id to node info
+#     nodes_dict = {node['object_id']: node for node in nodes_list}
 
-    # Convert ingoing keys to int and values to list of ints
-    ingoing_graph = {int(k): [int(x) for x in v] for k, v in ingoing.items()}
-    print(ingoing_graph)
-    # Define a recursive function to build a hierarchical tree
-    def build_tree(node: int, visited: set) -> dict:
-        if node in visited:
-            return None
-        visited.add(node)
-        node_info = nodes_dict.get(node, {'sem_label': 'Unknown'})
-        tree_node = {
-            "sem_label": node_info["sem_label"],
-            "object_id": node,
-            "child_nodes": []
-        }
-        for child in ingoing_graph.get(node, []):
-            print('child of ', node, 'is ', child)
-            if ingoing_graph.get(child, []) == [node]:
-                tree_node.extend(build_tree(child, visited)) #TODO: fix so that it gets added as an equal, not as a child
-            else:
-                tree_node["child_nodes"].append(build_tree(child, visited))
-        return tree_node
+#     # Convert ingoing keys to int and values to list of ints
+#     ingoing_graph = {int(k): [int(x) for x in v] for k, v in ingoing.items()}
+#     print(ingoing_graph)
+#     # Define a recursive function to build a hierarchical tree
+#     def build_tree(node: int, visited: set) -> dict:
+#         if node in visited:
+#             return None
+#         visited.add(node)
+#         node_info = nodes_dict.get(node, {'sem_label': 'Unknown'})
+#         tree_node = {
+#             "sem_label": node_info["sem_label"],
+#             "object_id": node,
+#             "child_nodes": []
+#         }
+#         for child in ingoing_graph.get(node, []):
+#             print('child of ', node, 'is ', child)
+#             if ingoing_graph.get(child, []) == [node]:
+#                 tree_node.extend(build_tree(child, visited)) #TODO: fix so that it gets added as an equal, not as a child
+#             else:
+#                 tree_node["child_nodes"].append(build_tree(child, visited))
+#         return tree_node
 
 
-    # Sort starting nodes by number of ingoing connections (descending)
-    starting_nodes = sorted(ingoing_graph.keys(), key=lambda k: len(ingoing_graph[k]), reverse=True)
+#     # Sort starting nodes by number of ingoing connections (descending)
+#     starting_nodes = sorted(ingoing_graph.keys(), key=lambda k: len(ingoing_graph[k]), reverse=True)
 
-    visited = set()
-    tree_list = []
-    for node in starting_nodes:
-        if node not in visited:
-            tree = build_tree(node, visited)
-            if tree is not None:
-                tree_list.append(tree)
+#     visited = set()
+#     tree_list = []
+#     for node in starting_nodes:
+#         if node not in visited:
+#             tree = build_tree(node, visited)
+#             if tree is not None:
+#                 tree_list.append(tree)
 
-    os.makedirs(save_dir, exist_ok=True)
-    output_file = os.path.join(save_dir, "ingoing_traversal.json")
-    with open(output_file, "w") as f:
-        json.dump(tree_list, f, indent=4)
-    print(f"Traversal chains saved to {output_file}")
+#     os.makedirs(save_dir, exist_ok=True)
+#     output_file = os.path.join(save_dir, "ingoing_traversal.json")
+#     with open(output_file, "w") as f:
+#         json.dump(tree_list, f, indent=4)
+#     print(f"Traversal chains saved to {output_file}")
 

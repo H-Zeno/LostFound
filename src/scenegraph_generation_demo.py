@@ -6,7 +6,7 @@ import os
 
 from LostFound.src.scene_graph import SceneGraph, get_scene_graph
 from LostFound.src.data_processing.preprocessing import preprocess_scan
-from LostFound.src.utils import parse_txt, scene_graph_to_json, traverse_ingoing_nodes
+from LostFound.src.utils import parse_txt, scene_graph_to_json
 
 # The drawer_integration is only in the Spotlight repo!!
 # from LostFound.src.data_processing.drawer_integration import parse_txt 
@@ -19,9 +19,9 @@ if __name__ == "__main__":
     SCAN_DIR = f"{os.environ['LSARP']}/{config['path_to_data']}prescans/{config['pre_scanned_graphs']['high_res']}/"
     SAVE_DIR = f"{os.environ['LSARP']}/{config['path_to_data']}3D-Scene-Understanding"
 
-    scene_graph = get_scene_graph(SCAN_DIR, categories_to_remove=["curtain", "door"], transform_to_spot_frame=True, drawers=False, light_switches=True)
+    scene_graph = get_scene_graph(SCAN_DIR, categories_to_remove=["curtain", "door"], transform_to_spot_frame=True, drawers=True, light_switches=True)
     ### visualizes the current state of the scene graph with different visualizaion options:
-    # scene_graph.visualize(centroids=True, connections=True, labels=True)
+    scene_graph.visualize(centroids=True, connections=True, labels=True)
 
     # ### Add lamps to the scene:
     # lamp_ids = []
@@ -65,4 +65,3 @@ if __name__ == "__main__":
     with open(f"{SAVE_DIR}/scene_graph.json", "w") as f:
             f.write(scene_graph_to_json(scene_graph))
    
-    traverse_ingoing_nodes(f"{SAVE_DIR}/scene_graph.json", f"{SAVE_DIR}/ingoing_traversal.json")
