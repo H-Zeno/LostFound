@@ -96,6 +96,7 @@ class SceneGraph:
             transformation = np.dot(transformation, trans_inv)
         for node in self.nodes.values():
             node.transform(transformation, force=True)
+            node.get_dimensions()
         if self.mesh is not None:
             self.mesh.transform(transformation)
         if self.pcd is not None:
@@ -192,33 +193,38 @@ class SceneGraph:
         to keep the output human-readable.
         """
         sg_dict = {
-            "pose": self.pose.tolist() if self.pose is not None else None,
-            "min_confidence": self.min_confidence,
-            "k": self.k,
-            "immovable": self.immovable,
-            "nodes": [],
+            "nodes": {},
             "outgoing": self.outgoing,
             "ingoing": self.ingoing,
-        }
-        for node in self.nodes.values():
-            node_info = {
-                "object_id": node.object_id,
-                "sem_label": self.label_mapping.get(node.sem_label, f"Unknown({node.sem_label})"),
-                "centroid": node.centroid.tolist() if isinstance(node.centroid, np.ndarray) else node.centroid,
-                "confidence": node.confidence,
-                "movable": node.movable,
-                "visible": node.visible,
-                "color": list(node.color) if isinstance(node.color, (list, np.ndarray)) else node.color,
-            }
-            sg_dict["nodes"].append(node_info)
+        },
+        nodes = {
+                idx: {
+                    "label": self.label_mapping.get(node.sem_label, "Semantic label not found"),
+                    "centroid": node.centroid.tolist() if isinstance(node.centroid, np.ndarray) else node.centroid,
+                    "dimensions": node.dimensions.tolist() if isinstance(node.dimensions, np.ndarray) else node.dimensions, #[max(node.dimensions[0], node.dimensions[1]), min(node.dimensions[0], node.dimensions[1]), node.dimensions[2]],
+                    "confidence": node.confidence,
+                    "movable": node.movable,
+                    "visible": node.visible,
+                }
+                for idx, node in self.nodes.items()
+            },
+        
+        sg_dict["nodes"] = nodes
+
         return sg_dict
 
-    def scene_graph_to_json(self) -> str:
+    
+    def save_as_json(self, file_path: str) -> None:
         """
-        Returns a JSON string representation of the SceneGraph for clear human and LLM readability.
+        Saves a human readable scene graph to a JSON file at the specified path.
         """
-        
-        return json.dumps(self.scene_graph_to_dict(), indent=4)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        sg_dict = self.scene_graph_to_dict()
+
+        with open(file_path, "w") as f:
+             json.dump(sg_dict, f, indent=4)
+
+
     
     def save(self, file_path: str) -> None:
         """
@@ -805,7 +811,10 @@ def get_scene_graph(SCAN_DIR: str, categories_to_remove: Optional[List[str]] = [
     # instantiate the label mapping for Mask3D object classes (would change if using different 3D instance segmentation model)
     label_map = pd.read_csv(os.path.join(SCAN_DIR, 'mask3d_label_mapping.csv'), usecols=['id', 'category'])
     mask3d_label_mapping = pd.Series(label_map['category'].values, index=label_map['id']).to_dict()
-    preprocess_scan(SCAN_DIR, drawer_detection=True, light_switch_detection=True)
+
+    # Preprocessing the scene graph (only has to happe once)
+    preprocess_scan(SCAN_DIR, drawer_detection=drawers, light_switch_detection=light_switches)
+
     T_ipad = np.load(os.path.join(SCAN_DIR, "aruco_pose.npy"))
     immovable=["armchair", "bookshelf", "end table", "shelf", "coffee table", "dresser"]
     scene_graph = SceneGraph(label_mapping=mask3d_label_mapping, min_confidence=0.2, immovable=immovable, pose=T_ipad)
@@ -816,11 +825,14 @@ def get_scene_graph(SCAN_DIR: str, categories_to_remove: Optional[List[str]] = [
         scene_graph.remove_category(category)
 
     scene_graph.color_with_ibm_palette()
-    
+
     if transform_to_spot_frame:
         # to transform to Spot coordinate system:
         T_spot = parse_txt(os.path.join(SCAN_DIR, "icp_tform_ground.txt"))
         scene_graph.change_coordinate_system(T_spot)  # where T_spot is a 4x4 transformation matrix of the aruco marker in Spot coordinate system
 
+    ### visualizes the current state of the scene graph with different visualizaion options:
+    scene_graph.visualize(centroids=True, connections=True, scale=0, labels=True)
+    
     return scene_graph
 

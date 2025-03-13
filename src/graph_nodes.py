@@ -63,6 +63,7 @@ class ObjectNode:
         self.mesh_mask = mesh_mask
         self.update_hull_tree()
         self.pose = compute_pose(self.points, self.centroid)
+        self.get_dimensions()
     
     def update_hull_tree(self):
         """
@@ -74,6 +75,18 @@ class ObjectNode:
         :return: None. Updates the `hull_tree` attribute in place.
         """
         self.hull_tree = KDTree(self.points)
+    
+    def get_dimensions(self) -> None:
+        """
+        Computes the dimensions of the object based on its bounding box.
+        """
+        point_cloud = o3d.geometry.PointCloud()
+        point_cloud.points = o3d.utility.Vector3dVector(self.points)
+
+        self.obb = point_cloud.get_oriented_bounding_box()
+        height_idx = np.argmax(np.abs(self.obb.R.T @ [0, 0, 1]))
+        order = [i for i in range(3) if i != height_idx] + [height_idx]
+        self.dimensions = self.obb.extent[order]
     
     def transform(self, transformation: np.ndarray, force: bool = False) -> None:
         """
