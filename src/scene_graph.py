@@ -1,22 +1,29 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import annotations
+import copy
 
 import numpy as np
 import pandas as pd
+import dill as pickle
+import os
 from scipy.spatial import KDTree
 import open3d as o3d
 import json
-import os, pickle
-from typing import Optional, List
+from typing import Optional, List, Union
 
 from ..src import ObjectNode, DrawerNode, LightSwitchNode
 from .utils import parse_txt
 from .data_processing.preprocessing import preprocess_scan
+from source.utils.recursive_config import Config
 import open3d.visualization.gui as gui
 import open3d.visualization.rendering as rendering
 import datetime, time
 import random
+
+config = Config()
+SAVE_DIR = config["robot_planner_settings"]["path_to_scene_data"] + config["robot_planner_settings"]["active_scene"]
 
 class SceneGraph:
     """
@@ -43,6 +50,7 @@ class SceneGraph:
         mesh (Optional[o3d.geometry.TriangleMesh]): Central mesh representation of the scene, if applicable.
         pcd (Optional[o3d.geometry.PointCloud]): Central point cloud representation of the scene, if applicable.
     """
+
 
     def __init__(
         self,
@@ -196,18 +204,19 @@ class SceneGraph:
             "nodes": {},
             "outgoing": self.outgoing,
             "ingoing": self.ingoing,
-        },
+        }
+        
         nodes = {
-                idx: {
-                    "label": self.label_mapping.get(node.sem_label, "Semantic label not found"),
-                    "centroid": node.centroid.tolist() if isinstance(node.centroid, np.ndarray) else node.centroid,
-                    "dimensions": node.dimensions.tolist() if isinstance(node.dimensions, np.ndarray) else node.dimensions, #[max(node.dimensions[0], node.dimensions[1]), min(node.dimensions[0], node.dimensions[1]), node.dimensions[2]],
-                    "confidence": node.confidence,
-                    "movable": node.movable,
-                    "visible": node.visible,
-                }
-                for idx, node in self.nodes.items()
-            },
+            idx: {
+                "label": self.label_mapping.get(node.sem_label, "Semantic label not found"),
+                "centroid": node.centroid.tolist() if isinstance(node.centroid, np.ndarray) else node.centroid,
+                "dimensions": node.dimensions.tolist() if isinstance(node.dimensions, np.ndarray) else node.dimensions,
+                "confidence": node.confidence,
+                "movable": node.movable,
+                "visible": node.visible,
+            }
+            for idx, node in self.nodes.items()
+        }
         
         sg_dict["nodes"] = nodes
 
@@ -225,10 +234,12 @@ class SceneGraph:
              json.dump(sg_dict, f, indent=4)
 
 
-    
-    def save(self, file_path: str) -> None:
+    def save(self, file_path: str = SAVE_DIR + "full_scene_graph") -> None:
         """
-        Saves the entire scene graph to a specified file using pickle serialization.
+        ## Saving fuunctionality with pickle is not fully working yet (cannot pickle 'open3d.cuda.pybind.geometry.OrientedBoundingBox' object)
+        Saves the scene graph to a specified file using pickle serialization.
+        Only the meshes and point clouds get omitted (arenot pickleble).
+
 
         This method serializes the scene graph object and writes it to a file in pickle format, 
         allowing for easy storage and retrieval. The file can later be loaded to reconstruct the 
@@ -237,8 +248,26 @@ class SceneGraph:
         :param file_path: Path to the file where the scene graph will be saved.
         :return: None. The scene graph is saved to the specified file.
         """
+
+        # Create a deep copy of the instance
+        scene_graph_copy = copy.deepcopy(self)
+
+        # This that I tried to solve the not-picklable issue
+        # # Remove non-picklable attributes from the copy
+        # scene_graph_copy.mesh = None
+        # scene_graph_copy.pcd = None
+
+        # for node in scene_graph_copy.nodes.values():
+        #     node.points = None
+        #     node.tracking_points = None
+        #     node.hull_tree = None
+        #     node.dimensions = None
+        #     node.mesh_mask = None
+
+        # Serialize the modified copy
         with open(file_path, 'wb') as f:
-            pickle.dump(self, f)
+            pickle.dump(scene_graph_copy, f)
+
     
     def init_graph(self) -> None:
         """
@@ -796,7 +825,25 @@ class SceneGraph:
         gui.Application.instance.run()
 
 
-def get_scene_graph(SCAN_DIR: str, categories_to_remove: Optional[List[str]] = ["curtain", "door"], transform_to_spot_frame: bool = True, drawers: bool = False, light_switches: bool = False) -> SceneGraph:
+def load_scenegraph_from_file(file_path: str) -> Union[None, SceneGraph]:
+    """
+    Loads the saved scene graph from a specified file using pickle deserialization.
+    
+    This method reads the scene graph object from a file in pickle format and reconstructs
+    the scene graph in its saved state.
+
+    :param file_path: Path to the file from which the scene graph will be loaded.
+    :return: The deserialized scene graph object.
+    """
+
+    # Check if the file exists
+    if not os.path.exists(file_path):
+        return None
+
+    with open(file_path, 'rb') as f:
+        return pickle.load(f)
+
+def get_scene_graph(SCAN_DIR: str, categories_to_remove: Optional[List[str]] = ["curtain", "door"], graph_save_path = SAVE_DIR + "full_scene_graph", transform_to_spot_frame: bool = True, drawers: bool = False, light_switches: bool = False, vis_block=False) -> SceneGraph:
     """
     This function builds a semantic 3D scene graph based on the instance segmentated 3D point clouds by Mask3D
     
@@ -808,31 +855,51 @@ def get_scene_graph(SCAN_DIR: str, categories_to_remove: Optional[List[str]] = [
     Returns:
         SceneGraph: The scene graph object.
     """
-    # instantiate the label mapping for Mask3D object classes (would change if using different 3D instance segmentation model)
-    label_map = pd.read_csv(os.path.join(SCAN_DIR, 'mask3d_label_mapping.csv'), usecols=['id', 'category'])
-    mask3d_label_mapping = pd.Series(label_map['category'].values, index=label_map['id']).to_dict()
 
-    # Preprocessing the scene graph (only has to happe once)
-    preprocess_scan(SCAN_DIR, drawer_detection=drawers, light_switch_detection=light_switches)
+    # Check if a scene graph of the specific scene is already save, if so load it
+    scene_graph = load_scenegraph_from_file(file_path=graph_save_path)
 
-    T_ipad = np.load(os.path.join(SCAN_DIR, "aruco_pose.npy"))
-    immovable=["armchair", "bookshelf", "end table", "shelf", "coffee table", "dresser"]
-    scene_graph = SceneGraph(label_mapping=mask3d_label_mapping, min_confidence=0.2, immovable=immovable, pose=T_ipad)
-    scene_graph.build(SCAN_DIR, drawers=drawers, light_switches=light_switches)
+    # Load the already saved scene graph
+    if scene_graph is not None: 
+        if vis_block:
+            ### visualizes the current state of the scene graph with different visualizaion options:
+            scene_graph.visualize(centroids=True, connections=True, labels=True)
 
-    # potentially remove a category
-    for category in categories_to_remove:
-        scene_graph.remove_category(category)
-
-    scene_graph.color_with_ibm_palette()
-
-    if transform_to_spot_frame:
-        # to transform to Spot coordinate system:
-        T_spot = parse_txt(os.path.join(SCAN_DIR, "icp_tform_ground.txt"))
-        scene_graph.change_coordinate_system(T_spot)  # where T_spot is a 4x4 transformation matrix of the aruco marker in Spot coordinate system
-
-    ### visualizes the current state of the scene graph with different visualizaion options:
-    scene_graph.visualize(centroids=True, connections=True, scale=0, labels=True)
+        return scene_graph
     
-    return scene_graph
+    else: 
+        # If it is not saved, build the scene graph
+
+        # Preprocessing the ipad scan with 1. mask 3D labels and 2. optional light switches and drawer detections
+        # This function will return directly when the preprocessing already happened before
+        preprocess_scan(SCAN_DIR, drawer_detection=drawers, light_switch_detection=light_switches)
+
+        # Build a new scene graph
+        label_map = pd.read_csv(os.path.join(SCAN_DIR, 'mask3d_label_mapping.csv'), usecols=['id', 'category'])
+        mask3d_label_mapping = pd.Series(label_map['category'].values, index=label_map['id']).to_dict()
+        T_ipad = np.load(os.path.join(SCAN_DIR, "aruco_pose.npy"))
+        immovable=["armchair", "bookshelf", "end table", "shelf", "coffee table", "dresser"]
+        scene_graph = SceneGraph(label_mapping=mask3d_label_mapping, min_confidence=0.2, immovable=immovable, pose=T_ipad)
+        scene_graph.build(SCAN_DIR, drawers=drawers, light_switches=light_switches)
+
+        # potentially remove a category
+        for category in categories_to_remove:
+            scene_graph.remove_category(category)
+
+        scene_graph.color_with_ibm_palette()
+
+        if transform_to_spot_frame:
+            # to transform to Spot coordinate system:
+            T_spot = parse_txt(os.path.join(SCAN_DIR, "icp_tform_ground.txt"))
+            scene_graph.change_coordinate_system(T_spot)  # where T_spot is a 4x4 transformation matrix of the aruco marker in Spot coordinate system
+
+        if vis_block:
+            ### visualizes the current state of the scene graph with different visualizaion options:
+            scene_graph.visualize(centroids=True, connections=True, labels=True)
+
+        # # Save the scene graph
+        ## Saving fuunctionality with pickle is not fully working yet (cannot pickle 'open3d.cuda.pybind.geometry.OrientedBoundingBox' object)
+        # scene_graph.save(file_path=graph_save_path)
+        
+        return scene_graph
 

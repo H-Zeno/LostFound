@@ -280,42 +280,6 @@ def stitch_videos(video_path_1, video_path_2, new_file="combined_video.mp4"):
     # Save the final video
     final_video.write_videofile(new_file)
 
-
-def scene_graph_to_dict(scene_graph) -> dict:
-    """
-    Serializes the essential components of the SceneGraph into a dictionary format
-    suitable for JSON encoding. Complex objects (like mesh, pcd, KDTree) are omitted
-    to keep the output human-readable.
-    """
-    sg_dict = {
-        "pose": scene_graph.pose.tolist() if scene_graph.pose is not None else None,
-        "min_confidence": scene_graph.min_confidence,
-        "k": scene_graph.k,
-        "immovable": scene_graph.immovable,
-        "nodes": [],
-        "outgoing": scene_graph.outgoing,
-        "ingoing": scene_graph.ingoing,
-    }
-    for node in scene_graph.nodes.values():
-        node_info = {
-            "object_id": node.object_id,
-            "sem_label": scene_graph.label_mapping.get(node.sem_label, f"Unknown({node.sem_label})"),
-            "centroid": node.centroid.tolist() if isinstance(node.centroid, np.ndarray) else node.centroid,
-            "confidence": node.confidence,
-            "movable": node.movable,
-            "visible": node.visible,
-            "color": list(node.color) if isinstance(node.color, (list, np.ndarray)) else node.color,
-        }
-        sg_dict["nodes"].append(node_info)
-    return sg_dict
-
-def scene_graph_to_json(scene_graph) -> str:
-    """
-    Returns a JSON string representation of the SceneGraph for clear human and LLM readability.
-    """
-    
-    return json.dumps(scene_graph_to_dict(scene_graph), indent=4)
-
 # Traverse ingoing nodes (experiment by Zeno 09/08/2025)
 # def traverse_ingoing_nodes(scene_graph_json_path: str, save_dir: str) -> None:
 #     """

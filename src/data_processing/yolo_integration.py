@@ -198,7 +198,7 @@ def register_drawers(dir_path: str) -> list:
     detections = [det for subdets in [detections[opt][0] for opt in optimal_images] for det in subdets]
     
     pcd_original = o3d.io.read_point_cloud(os.path.join(dir_path, 'mesh_labeled.ply'))
-    bboxes_3d = detections_to_bboxes(np.asarray(pcd_original.points), detections, threshold=0.9)
+    bboxes_3d = detections_to_bboxes(np.asarray(pcd_original.points), detections, threshold=0.7)
 
     all_bbox_indices = [(np.array(bbox.get_point_indices_within_bounding_box(pcd_original.points)), conf) for bbox, conf in bboxes_3d]
 
@@ -262,7 +262,7 @@ def register_light_switches(dir_path: str, vis_block: bool = False) -> list:
         detections.append(Detection(file=file, name=name, conf=data_num[optimal_detection_idx][0], bbox=bbox))
         test_centroids_idx.append(data_num[optimal_detection_idx][-2])
 
-    bboxes_3d = detections_to_bboxes(np.asarray(pcd_original.points), detections, threshold=0.9)
+    bboxes_3d = detections_to_bboxes(np.asarray(pcd_original.points), detections, threshold=0.7)
 
     all_bbox_indices = [(np.array(bbox.get_point_indices_within_bounding_box(pcd_original.points)), conf) for bbox, conf in bboxes_3d]
 

@@ -17,6 +17,7 @@ def preprocess_scan(
 ) -> np.ndarray | None:
     """
     Preprocesses an iPad scan by performing optional object detections and updating 3D mask predictions.
+    The processed scan is then saved to the specified scan directory.
 
     This function processes the specified scan directory to perform drawer and light switch detections,
     and searches for a specified ArUco marker in the image sequence. Detected drawers are used to update
