@@ -16,7 +16,7 @@ from typing import Optional, List, Union
 from ..src import ObjectNode, DrawerNode, LightSwitchNode
 from .utils import parse_txt
 from .data_processing.preprocessing import preprocess_scan
-from source.utils.recursive_config import Config
+from utils.recursive_config import Config
 import open3d.visualization.gui as gui
 import open3d.visualization.rendering as rendering
 import datetime, time
@@ -458,8 +458,84 @@ class SceneGraph:
                 for neighbor_idx in neighbor_indices
             ])
             return np.min(nearest_neighbor), neighbor_indices[np.argmin(nearest_neighbor)]
-
         
+    def get_nodes_in_radius(self, point: np.ndarray, radius: float) -> List[int]:
+        """
+        Finds all nodes within a specified radius of the given point.
+
+        :param point: A 3D numpy array representing the center point for the radius search.
+        :param radius: The radius as a float within which to search for nodes.
+        :return: A list of unique node IDs within the specified radius of the point.
+        """
+        return [self.ids[idx] for idx in self.tree.query_ball_point(point, radius)]
+
+    def get_nodes_in_front_of_object_face(self, node_centroid, face_normal) -> list:
+        """
+        Finds all nodes in front of a specified node's face based on a truncated 3D cone defined by the face normal.
+
+        The cone is defined as follows:
+        - It starts 0.1 meter away from the node (furniture) in the direction of the face normal.
+        - The near cross-section of the cone has a radius of 0.5 meters.
+        - The far cross-section (at 1.0 meter from the node) has a radius of 1.0 meter.
+        - Only nodes with z >= 0.1 (above the floor) are considered.
+
+        :param node_centroid: A 3D numpy array representing the centroid of the node.
+        :param face_normal: A 3D numpy array representing the normal vector of the node's face.
+        :return: A list of unique node IDs whose centroids fall inside the truncated cone.
+        """
+
+        # Normalize the face normal
+        face_normal = face_normal / np.linalg.norm(face_normal)
+
+        # Define cone parameters
+        near_distance = 0.25   # Cone starts 0.1 m from the furniture
+        far_distance = 1.0    # Cone extends to 1.0 m from the furniture
+        near_radius = 0.5     # Radius at the near face of the cone
+        far_radius = 1.0      # Radius at the far face of the cone
+        cone_length = far_distance - near_distance  # Total cone depth (0.9 m)
+
+        # Define the starting point of the cone (the plane from which the cone starts)
+        cone_start = node_centroid + near_distance * face_normal
+
+        # For an efficient KDTree query, compute a bounding sphere for the cone.
+        # We choose the sphere center as the midpoint between the near and far planes.
+        mid_distance = (near_distance + far_distance) / 2.0
+        sphere_center = node_centroid + mid_distance * face_normal
+        # The maximum distance from the sphere center to any point on the far face:
+        d_far = far_distance - mid_distance  # distance along normal from sphere center to far plane
+        sphere_radius = np.sqrt(d_far**2 + far_radius**2)
+
+        # Query KDTree for candidate nodes within the bounding sphere.
+        candidate_indices = self.tree.query_ball_point(sphere_center, sphere_radius)
+
+        valid_ids = []
+        for idx in candidate_indices:
+            candidate = self.nodes[idx]
+            # Exclude points below the floor threshold
+            if candidate[2] < 0.1:
+                continue
+
+            # Compute the vector from the start of the cone to the candidate point
+            vec = candidate - cone_start
+
+            # Project onto the face normal to get the distance along the cone axis
+            d = np.dot(vec, face_normal)
+            # The candidate must be between 0 (at cone start) and cone_length (at far face)
+            if d < 0 or d > cone_length:
+                continue
+
+            # Compute the perpendicular distance from the candidate to the cone axis
+            perp = vec - d * face_normal
+            perp_dist = np.linalg.norm(perp)
+
+            # Determine the allowed radius at this depth via linear interpolation
+            allowed_radius = near_radius + (far_radius - near_radius) * (d / cone_length)
+
+            if perp_dist <= allowed_radius:
+                valid_ids.append(self.ids[idx])
+
+        return valid_ids
+
     def remove_node(self, remove_index: int) -> None:
         """
         This method deletes the specified node from the scene graph, removes its connections, 
@@ -843,7 +919,7 @@ def load_scenegraph_from_file(file_path: str) -> Union[None, SceneGraph]:
     with open(file_path, 'rb') as f:
         return pickle.load(f)
 
-def get_scene_graph(SCAN_DIR: str, categories_to_remove: Optional[List[str]] = ["curtain", "door"], graph_save_path = SAVE_DIR + "full_scene_graph", transform_to_spot_frame: bool = True, drawers: bool = False, light_switches: bool = False, vis_block=False) -> SceneGraph:
+def get_scene_graph(SCAN_DIR: str, categories_to_remove: Optional[List[str]] = ["door"], graph_save_path = SAVE_DIR + "full_scene_graph", transform_to_spot_frame: bool = True, drawers: bool = False, light_switches: bool = False, vis_block=False) -> SceneGraph:
     """
     This function builds a semantic 3D scene graph based on the instance segmentated 3D point clouds by Mask3D
     

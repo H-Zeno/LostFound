@@ -72,11 +72,11 @@ def preprocess_scan(
         indices_lights = register_light_switches(scan_dir)
         
         light_lines = []
-        for indices_light in indices_lights:
+        for indices_light, conf in indices_lights:
             binary_mask = np.zeros(points.shape[0])
             binary_mask[indices_light] = 1
             np.savetxt(scan_dir + f"/pred_mask/{next_line:03}.txt", binary_mask, fmt='%d')
-            light_lines += [f"pred_mask/{next_line:03}.txt 232 1.0\n",]
+            light_lines += [f"pred_mask/{next_line:03}.txt 232 {conf}\n",]
             next_line += 1
     
         with open(scan_dir + "/predictions_light_switches.txt", 'a') as file:
