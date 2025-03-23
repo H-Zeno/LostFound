@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import annotations
 import copy
-
+import logging
 import numpy as np
 import pandas as pd
 import dill as pickle
@@ -99,9 +99,14 @@ class SceneGraph:
         :param transformation: A 4x4 transformation matrix to apply to the scene graph's coordinate system.
         :return: None. The coordinate system of nodes and spatial data is modified in place.
         """
+        # If we have a pose set, we need to properly handle the transformation chain
         if self.pose is not None:
-            trans_inv = np.linalg.inv(self.pose)
-            transformation = np.dot(transformation, trans_inv)
+            # Store the combined transformation for future reference
+            self.pose = np.dot(transformation, self.pose)
+        else:
+            self.pose = transformation
+            
+        # Apply the transformation directly to all nodes and geometries
         for node in self.nodes.values():
             node.transform(transformation, force=True)
             node.get_dimensions()
@@ -474,7 +479,7 @@ class SceneGraph:
         Finds all nodes in front of a specified node's face based on a truncated 3D cone defined by the face normal.
 
         The cone is defined as follows:
-        - It starts 0.1 meter away from the node (furniture) in the direction of the face normal.
+        - It starts 0.25 meter away from the node (furniture) in the direction of the face normal.
         - The near cross-section of the cone has a radius of 0.5 meters.
         - The far cross-section (at 1.0 meter from the node) has a radius of 1.0 meter.
         - Only nodes with z >= 0.1 (above the floor) are considered.
@@ -488,7 +493,7 @@ class SceneGraph:
         face_normal = face_normal / np.linalg.norm(face_normal)
 
         # Define cone parameters
-        near_distance = 0.25   # Cone starts 0.1 m from the furniture
+        near_distance = 0.25   # Cone starts 0.25 m from the furniture
         far_distance = 1.0    # Cone extends to 1.0 m from the furniture
         near_radius = 0.5     # Radius at the near face of the cone
         far_radius = 1.0      # Radius at the far face of the cone
@@ -508,9 +513,11 @@ class SceneGraph:
         # Query KDTree for candidate nodes within the bounding sphere.
         candidate_indices = self.tree.query_ball_point(sphere_center, sphere_radius)
 
+        logging.info(f"Found {len(candidate_indices)} candidate nodes in the bounding sphere. Their indices are: {candidate_indices}")
         valid_ids = []
         for idx in candidate_indices:
-            candidate = self.nodes[idx]
+            node_id = self.ids[idx]  # Convert tree index to actual node ID
+            candidate = self.nodes[node_id].centroid
             # Exclude points below the floor threshold
             if candidate[2] < 0.1:
                 continue
@@ -532,7 +539,7 @@ class SceneGraph:
             allowed_radius = near_radius + (far_radius - near_radius) * (d / cone_length)
 
             if perp_dist <= allowed_radius:
-                valid_ids.append(self.ids[idx])
+                valid_ids.append(node_id)
 
         return valid_ids
 
