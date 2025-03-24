@@ -37,7 +37,7 @@ class ObjectNode:
         tracking_points: list,
         mesh_mask: np.ndarray,
         confidence: Optional[float] = None,
-        movable: bool = True
+        movable: bool = True,
     ):
         """
         Initializes an ObjectNode with specified attributes, computes its centroid. Generic building block for scene graph.
@@ -61,6 +61,7 @@ class ObjectNode:
         self.visible = True
         self.tracking_points = tracking_points
         self.mesh_mask = mesh_mask
+        self.equation = None
         self.update_hull_tree()
         self.pose = compute_pose(self.points, self.centroid)
         self.get_dimensions()
@@ -122,6 +123,15 @@ class ObjectNode:
                 raise ValueError("Invalid argument shape. Expected (3,) for translation, (3,3) for rotation, or (4,4) for homogeneous transformation.")
         else:
             raise TypeError("Invalid argument type. Expected numpy.ndarray.")
+        
+    def set_normal(self, equation: np.ndarray) -> None:
+        """
+        Sets the surface normal for the light switch using a plane equation.
+
+        :param equation: Array representing the plane equation of the light switch's surface.
+        :return: None.
+        """
+        self.equation = equation
 
 
 class DrawerNode(ObjectNode):

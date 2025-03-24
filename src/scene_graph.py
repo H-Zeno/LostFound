@@ -510,36 +510,58 @@ class SceneGraph:
         d_far = far_distance - mid_distance  # distance along normal from sphere center to far plane
         sphere_radius = np.sqrt(d_far**2 + far_radius**2)
 
-        # Query KDTree for candidate nodes within the bounding sphere.
-        candidate_indices = self.tree.query_ball_point(sphere_center, sphere_radius)
+        # Safety check: make sure the tree exists
+        if self.tree is None:
+            logging.warning("KDTree is not initialized in scene_graph, returning empty list")
+            return []
 
-        logging.info(f"Found {len(candidate_indices)} candidate nodes in the bounding sphere. Their indices are: {candidate_indices}")
-        valid_ids = []
-        for idx in candidate_indices:
-            node_id = self.ids[idx]  # Convert tree index to actual node ID
-            candidate = self.nodes[node_id].centroid
-            # Exclude points below the floor threshold
-            if candidate[2] < 0.1:
-                continue
+        try:
+            # Query KDTree for candidate nodes within the bounding sphere.
+            candidate_indices = self.tree.query_ball_point(sphere_center, sphere_radius)
+            
+            logging.info(f"Found {len(candidate_indices)} candidate nodes in the bounding sphere. Their indices are: {candidate_indices}")
+            
+            valid_ids = []
+            for idx in candidate_indices:
+                # Add safety check to ensure idx is in range
+                if idx < 0 or idx >= len(self.ids):
+                    logging.warning(f"Index {idx} out of range for self.ids with length {len(self.ids)}")
+                    continue
+                    
+                node_id = self.ids[idx]  # Convert tree index to actual node ID
+                
+                # Add safety check to ensure node_id exists in nodes dictionary
+                if node_id not in self.nodes:
+                    logging.warning(f"Node ID {node_id} not found in self.nodes")
+                    continue
+                    
+                candidate = self.nodes[node_id].centroid
+                # Exclude points below the floor threshold
+                if candidate[2] < 0.1:
+                    continue
 
-            # Compute the vector from the start of the cone to the candidate point
-            vec = candidate - cone_start
+                # Compute the vector from the start of the cone to the candidate point
+                vec = candidate - cone_start
 
-            # Project onto the face normal to get the distance along the cone axis
-            d = np.dot(vec, face_normal)
-            # The candidate must be between 0 (at cone start) and cone_length (at far face)
-            if d < 0 or d > cone_length:
-                continue
+                # Project onto the face normal to get the distance along the cone axis
+                d = np.dot(vec, face_normal)
+                # The candidate must be between 0 (at cone start) and cone_length (at far face)
+                if d < 0 or d > cone_length:
+                    continue
 
-            # Compute the perpendicular distance from the candidate to the cone axis
-            perp = vec - d * face_normal
-            perp_dist = np.linalg.norm(perp)
+                # Compute the perpendicular distance from the candidate to the cone axis
+                perp = vec - d * face_normal
+                perp_dist = np.linalg.norm(perp)
 
-            # Determine the allowed radius at this depth via linear interpolation
-            allowed_radius = near_radius + (far_radius - near_radius) * (d / cone_length)
+                # Determine the allowed radius at this depth via linear interpolation
+                allowed_radius = near_radius + (far_radius - near_radius) * (d / cone_length)
 
-            if perp_dist <= allowed_radius:
-                valid_ids.append(node_id)
+                if perp_dist <= allowed_radius:
+                    valid_ids.append(node_id)
+                    
+        except Exception as e:
+            logging.error(f"Error in get_nodes_in_front_of_object_face: {e}")
+            return []
 
         return valid_ids
 
@@ -728,7 +750,7 @@ class SceneGraph:
                 geometries.append((drawer_set, "drawer_connections", line_mat))
         
         return geometries
-    
+
     
     def set_camera(self, size, intrinsics) -> tuple[o3d.camera.PinholeCameraIntrinsic, np.ndarray] | None:
         """
