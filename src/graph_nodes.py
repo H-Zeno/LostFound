@@ -57,6 +57,7 @@ class ObjectNode:
         self.sem_label = sem_label
         self.color = color
         self.movable = movable
+        self.interactions_with_object = []
         self.confidence = confidence
         self.visible = True
         self.tracking_points = tracking_points
@@ -65,6 +66,7 @@ class ObjectNode:
         self.update_hull_tree()
         self.pose = compute_pose(self.points, self.centroid)
         self.get_dimensions()
+        
     
     def update_hull_tree(self):
         """
@@ -126,7 +128,7 @@ class ObjectNode:
         
     def set_normal(self, equation: np.ndarray) -> None:
         """
-        Sets the surface normal for the light switch using a plane equation.
+        Sets the surface normal for the ii switch using a plane equation.
 
         :param equation: Array representing the plane equation of the light switch's surface.
         :return: None.
@@ -301,6 +303,7 @@ class LightSwitchNode(ObjectNode):
         button_count (int or None): Number of buttons on the light switch, if known.
         interaction (any): Represents interaction data or state, if applicable.
         normal (np.ndarray or None): Normal vector for the light switch's surface, if calculated.
+        amount_of_interactions (int): Number of interactions with the light switch.
     """
 
     def __init__(
@@ -337,7 +340,7 @@ class LightSwitchNode(ObjectNode):
         self.lamps = []
         self.button_count = None
         self.interaction = None
-    
+        
     def transform(self, transformation, force=False):
         # light switch can't be moved, only if the whole scene is moved
         if force:

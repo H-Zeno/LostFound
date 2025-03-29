@@ -211,8 +211,9 @@ class SceneGraph:
             "ingoing": self.ingoing,
         }
         
-        nodes = {
-            idx: {
+        nodes = {}
+        for idx, node in self.nodes.items():
+            node_dict = {
                 "label": self.label_mapping.get(node.sem_label, "Semantic label not found"),
                 "centroid": node.centroid.tolist() if isinstance(node.centroid, np.ndarray) else node.centroid,
                 "dimensions": node.dimensions.tolist() if isinstance(node.dimensions, np.ndarray) else node.dimensions,
@@ -220,8 +221,9 @@ class SceneGraph:
                 "movable": node.movable,
                 "visible": node.visible,
             }
-            for idx, node in self.nodes.items()
-        }
+            if len(node.interactions_with_object) > 0:
+                node_dict["interactions_with_object"] = node.interactions_with_object
+            nodes[idx] = node_dict
         
         sg_dict["nodes"] = nodes
 
