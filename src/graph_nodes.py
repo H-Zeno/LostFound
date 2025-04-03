@@ -340,6 +340,7 @@ class LightSwitchNode(ObjectNode):
         self.lamps = []
         self.button_count = None
         self.interaction = None
+        self.affordance_dict = None
         
     def transform(self, transformation, force=False):
         # light switch can't be moved, only if the whole scene is moved

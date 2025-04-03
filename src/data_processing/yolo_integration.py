@@ -213,7 +213,7 @@ def register_drawers(dir_path: str) -> list:
         else:
             registered_indices.append((indcs, conf))
     
-    return [indcs for (indcs, _) in sorted(registered_indices, key=lambda x: x[1])]
+    return [(indcs, conf) for (indcs, conf) in sorted(registered_indices, key=lambda x: x[1])]
 
 
 def register_light_switches(dir_path: str, vis_block: bool = False) -> list:
