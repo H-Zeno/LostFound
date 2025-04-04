@@ -985,7 +985,7 @@ def get_scene_graph(SCAN_DIR: str, categories_to_remove: Optional[List[str]] = [
         label_map = pd.read_csv(os.path.join(SCAN_DIR, 'mask3d_label_mapping.csv'), usecols=['id', 'category'])
         mask3d_label_mapping = pd.Series(label_map['category'].values, index=label_map['id']).to_dict()
         T_ipad = np.load(os.path.join(SCAN_DIR, "aruco_pose.npy"))
-        immovable=["armchair", "bookshelf", "end table", "shelf", "coffee table", "dresser"]
+        immovable=["armchair", "bookshelf", "end table", "shelf", "coffee table", "dresser", "curtain", "couch", "table", "bed", "chair", "tv stand", "cabinet"]
         scene_graph = SceneGraph(label_mapping=mask3d_label_mapping, min_confidence=0.2, immovable=immovable, pose=T_ipad)
         scene_graph.build(SCAN_DIR, drawers=drawers, light_switches=light_switches)
 
