@@ -186,6 +186,7 @@ class DrawerNode(ObjectNode):
         self.box = None
         self.belongs_to = None
         self.contains = []
+        self.is_open = False
     
     def sign_check(self, point: np.ndarray) -> bool:
         """
